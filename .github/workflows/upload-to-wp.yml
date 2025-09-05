@@ -81,8 +81,8 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            ✅ KTBGit Uploader - Hoàn tất
-            Tổng số file zip đã upload whatwillwear: ${{ steps.upload_process.outputs.uploaded_count }}
+            ✅ KTBGit Whatwillwear Uploader - Hoàn tất
+            Tổng số file zip đã upload: ${{ steps.upload_process.outputs.uploaded_count }}
             
       - name: Send Failure Message to Telegram
         if: failure()
@@ -91,5 +91,5 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            ❌ KTBGit Uploader whatwillwear - Thất bại
+            ❌ KTBGit Uploader Whatwillwear - Thất bại
             Đã xảy ra lỗi trong quá trình upload.
