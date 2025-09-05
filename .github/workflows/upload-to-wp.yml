@@ -32,6 +32,9 @@ jobs:
       - name: Upload files and run WP-CLI command
         id: upload_process
         run: |
+          # Define the unique temporary directory
+          UNIQUE_DIR="/tmp/$(date +%s%N)"
+          
           # Kiểm tra và tạo file log nếu chưa tồn tại
           touch ktbupload/uploaded_files.log
           
@@ -48,11 +51,11 @@ jobs:
             else
               echo "Uploading $file..."
               
-              # Tạo một thư mục tạm thời duy nhất cho lần chạy này
-              UNIQUE_DIR="/tmp/$(date +%s%N)"
-              
-              # Upload file zip vào thư mục tạm thời duy nhất
-              scp -o StrictHostKeyChecking=no -P ${{ secrets.VPS_PORT }} "$file" ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:"$UNIQUE_DIR/"
+              # TẠO THƯ MỤC TRÊN VPS TRƯỚC KHI UPLOAD
+              ssh -o StrictHostKeyChecking=no -p ${{ secrets.VPS_PORT }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "mkdir -p $UNIQUE_DIR"
+
+              # UPLOAD FILE ZIP VÀO THƯ MỤC ĐÃ TẠO
+              scp -o StrictHostKeyChecking=no -P ${{ secrets.VPS_PORT }} "$file" ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:$UNIQUE_DIR/
               
               ssh -o StrictHostKeyChecking=no -p ${{ secrets.VPS_PORT }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "
                 # Giải nén file zip
