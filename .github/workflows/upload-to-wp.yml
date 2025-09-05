@@ -53,7 +53,7 @@ jobs:
                 cd /tmp
                 unzip -o "$file"
                 cd /home/whatwillwear.com/public_html
-                wp media import /tmp/*.webp --porcelain --user=khuetran
+                wp media import /tmp/*.webp --porcelain --user=tran
                 rm /tmp/$file /tmp/*.webp
               "
               # Ghi tên file vào log nếu upload thành công
