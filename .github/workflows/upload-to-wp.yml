@@ -1,0 +1,95 @@
+name: Upload to WordPress
+
+on:
+  repository_dispatch:
+    types: [upload-zip]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ktbupload repo
+        uses: actions/checkout@v4
+        with:
+          path: ktbupload
+
+      - name: Checkout ktb-image repo
+        uses: actions/checkout@v4
+        with:
+          repository: ktbgit/ktb-image
+          path: ktb-image
+          token: ${{ secrets.KTB_IMAGE_PAT }}
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          
+      - name: Upload files and run WP-CLI command
+        id: upload_process
+        run: |
+          # Kiểm tra và tạo file log nếu chưa tồn tại
+          touch ktbupload/uploaded_files.log
+          
+          cd ktb-image/generated-zips/
+          FILE_COUNT=$(ls -1 *.zip | wc -l)
+          echo "Processing $FILE_COUNT files..."
+          
+          UPLOAD_COUNT=0
+          
+          for file in *.zip; do
+            # Kiểm tra xem file đã được upload chưa
+            if grep -Fxq "$file" ../../ktbupload/uploaded_files.log; then
+              echo "Skipping $file, already uploaded."
+            else
+              echo "Uploading $file..."
+              scp -o StrictHostKeyChecking=no -P ${{ secrets.VPS_PORT }} "$file" ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/tmp/
+              
+              ssh -o StrictHostKeyChecking=no -p ${{ secrets.VPS_PORT }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "
+                cd /tmp
+                unzip -o "$file"
+                cd /home/whatwillwear.com/public_html
+                wp media import /tmp/*.webp --porcelain --user=khuetran
+                rm /tmp/$file /tmp/*.webp
+              "
+              # Ghi tên file vào log nếu upload thành công
+              echo "$file" >> ../../ktbupload/uploaded_files.log
+              UPLOAD_COUNT=$((UPLOAD_COUNT+1))
+              echo "Finished importing $file."
+            fi
+          done
+          echo "Total files processed: $FILE_COUNT"
+          echo "uploaded_count=$UPLOAD_COUNT" >> $GITHUB_OUTPUT
+      
+      - name: Commit and push log file
+        if: success()
+        run: |
+          cd ktbupload
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uploaded_files.log
+          git commit -m "Update uploaded files log" || echo "No changes to commit"
+          git push
+      - name: Send Success Message to Telegram
+        if: success()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ✅ KTBGit Uploader - Hoàn tất
+            Tổng số file zip đã upload whatwillwear: ${{ steps.upload_process.outputs.uploaded_count }}
+            
+      - name: Send Failure Message to Telegram
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ❌ KTBGit Uploader whatwillwear - Thất bại
+            Đã xảy ra lỗi trong quá trình upload.
