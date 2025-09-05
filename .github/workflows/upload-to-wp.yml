@@ -47,14 +47,24 @@ jobs:
               echo "Skipping $file, already uploaded."
             else
               echo "Uploading $file..."
-              scp -o StrictHostKeyChecking=no -P ${{ secrets.VPS_PORT }} "$file" ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/tmp/
+              
+              # Tạo một thư mục tạm thời duy nhất cho lần chạy này
+              UNIQUE_DIR="/tmp/$(date +%s%N)"
+              
+              # Upload file zip vào thư mục tạm thời duy nhất
+              scp -o StrictHostKeyChecking=no -P ${{ secrets.VPS_PORT }} "$file" ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:"$UNIQUE_DIR/"
               
               ssh -o StrictHostKeyChecking=no -p ${{ secrets.VPS_PORT }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "
-                cd /tmp
+                # Giải nén file zip
+                cd $UNIQUE_DIR
                 unzip -o "$file"
+                
+                # Import các file đã giải nén
                 cd /home/whatwillwear.com/public_html
-                wp media import /tmp/*.webp --porcelain --user=tran
-                rm /tmp/$file /tmp/*.webp
+                wp media import $UNIQUE_DIR/*.webp --porcelain --user=tran
+                
+                # Dọn dẹp
+                rm -rf $UNIQUE_DIR
               "
               # Ghi tên file vào log nếu upload thành công
               echo "$file" >> ../../ktbupload/uploaded_files.log
@@ -74,6 +84,7 @@ jobs:
           git add uploaded_files.log
           git commit -m "Update uploaded files log" || echo "No changes to commit"
           git push
+
       - name: Send Success Message to Telegram
         if: success()
         uses: appleboy/telegram-action@master
