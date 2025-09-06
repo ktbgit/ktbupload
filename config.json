@@ -13,6 +13,13 @@
       "wp_path": "/home/whatwillwear.com/public_html",
       "wp_author": "tran",
       "vps_secret_prefix": "WHATWILLWEAR"
+    },
+    {
+      "slug": "vflippa",
+      "prefix": "vflippa",
+      "wp_path": "/home/vflippa.com/public_html",
+      "wp_author": "khuetran",
+      "vps_secret_prefix": "VFLIPPA"
     }
   ]
 }
