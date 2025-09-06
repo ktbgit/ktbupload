@@ -22,7 +22,7 @@ jobs:
         with:
           repository: ktbgit/ktb-image
           path: ktb-image
-          token: ${{ secrets.KTB_IMAGE_PAT }}
+          token: ${{ secrets.KTBGIT_IMAGE_PAT }}
 
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.5.3
