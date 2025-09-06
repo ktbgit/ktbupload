@@ -5,15 +5,15 @@ on:
     types: [upload-zip]
   workflow_dispatch:
 
+# Cấp quyền ghi cho GITHUB_TOKEN để push file log về repo
 permissions:
   contents: write
 
 jobs:
-  # JOB 1: Đọc config và tạo ra ma trận cho job sau
+  # JOB 1: Đọc config và tạo ma trận động cho job sau
   setup:
     runs-on: ubuntu-latest
     outputs:
-      # Output sẽ là một chuỗi JSON chứa danh sách các site
       sites_matrix: ${{ steps.set_matrix.outputs.sites }}
     steps:
       - name: Checkout ktbupload repo
@@ -22,7 +22,6 @@ jobs:
       - name: Read sites config and set matrix
         id: set_matrix
         run: |
-          # Dùng jq để đọc file json và chuyển thành chuỗi JSON trên 1 dòng
           SITES_JSON=$(jq -c '.sites' ktbupload/config.json)
           echo "sites=${SITES_JSON}" >> $GITHUB_OUTPUT
 
@@ -31,7 +30,7 @@ jobs:
     needs: setup # Phải chạy sau khi job setup hoàn thành
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false # Nếu 1 job con bị lỗi, các job khác vẫn tiếp tục chạy
+      fail-fast: false # Nếu 1 site lỗi, các site khác vẫn tiếp tục
       matrix:
         # Tạo ma trận từ output của job setup
         site: ${{ fromJson(needs.setup.outputs.sites_matrix) }}
@@ -48,11 +47,6 @@ jobs:
           repository: ktbhub/ktb-image
           path: ktb-image
           token: ${{ secrets.KTBHUB_PAT }}
-
-      - name: Set up SSH for Git Push
-        uses: webfactory/ssh-agent@v0.5.3
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
           
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -65,26 +59,24 @@ jobs:
           # Truyền toàn bộ thông tin của site hiện tại vào script
           SITE_CONFIG_JSON: ${{ toJSON(matrix.site) }}
           
-          # Pass TẤT CẢ secrets vào môi trường.
-          # Script Node.js sẽ tự chọn đúng secret dựa vào vps_secret_prefix.
+          # Truyền TẤT CẢ secrets của VPS vào môi trường.
+          # Script Node.js sẽ tự động chọn đúng secret cần dùng.
           KTBTEE_VPS_HOST: ${{ secrets.KTBTEE_VPS_HOST }}
           KTBTEE_VPS_USERNAME: ${{ secrets.KTBTEE_VPS_USERNAME }}
           KTBTEE_SSH_PRIVATE_KEY: ${{ secrets.KTBTEE_SSH_PRIVATE_KEY }}
           KTBTEE_VPS_PORT: ${{ secrets.KTBTEE_VPS_PORT }}
+          
           WHATWILLWEAR_VPS_HOST: ${{ secrets.WHATWILLWEAR_VPS_HOST }}
           WHATWILLWEAR_VPS_USERNAME: ${{ secrets.WHATWILLWEAR_VPS_USERNAME }}
           WHATWILLWEAR_SSH_PRIVATE_KEY: ${{ secrets.WHATWILLWEAR_SSH_PRIVATE_KEY }}
           WHATWILLWEAR_VPS_PORT: ${{ secrets.WHATWILLWEAR_VPS_PORT }}
-          # Khi có site mới, bạn chỉ cần thêm secrets của nó vào đây và vào repo settings
           
-        run: |
-          # Chạy script xử lý, script này sẽ được điều chỉnh ở bước 3
-          node ./ktbupload/upload-script.js
+          # LƯU Ý: Khi có site mới, bạn chỉ cần thêm secrets của nó vào đây và vào repo settings
+          
+        run: node ktbupload/upload-script.js
       
-      # Các bước commit log và gửi Telegram có thể được điều chỉnh để chạy sau khi
-      # tất cả các job trong matrix hoàn thành, bằng cách tạo một job thứ 3.
-      # Tuy nhiên, để đơn giản, ta có thể commit log ngay tại đây.
       - name: Commit and push log file
+        # Chỉ chạy nếu có file được upload thành công
         if: success() && steps.upload_process.outputs.uploaded_count > 0
         run: |
           cd ktbupload
@@ -94,18 +86,19 @@ jobs:
           git commit -m "Update log for ${{ matrix.site.slug }}" || echo "No changes to commit"
           git push
 
-  # (Tùy chọn) JOB 3: Gửi báo cáo tổng hợp sau khi tất cả hoàn tất
+  # JOB 3: Gửi báo cáo tổng hợp sau khi tất cả các job upload hoàn tất
   report:
     needs: upload
-    if: always() # Luôn chạy dù upload thành công hay thất bại
+    if: always() # Luôn chạy dù các job upload thành công hay thất bại
     runs-on: ubuntu-latest
     steps:
-      - name: Send Report to Telegram
+      - name: Send Summary Report to Telegram
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            ✅ KTB Uploader - Hoàn tất!
-            Trạng thái job: ${{ needs.upload.result }}
+            ✅ KTB Uploader - Workflow Hoàn Tất!
+            
+            Trạng thái chung: ${{ needs.upload.result }}
             Xem chi tiết tại: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
