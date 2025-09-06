@@ -22,7 +22,7 @@ jobs:
       - name: Read sites config and set matrix
         id: set_matrix
         run: |
-          SITES_JSON=$(jq -c '.sites' ktbupload/config.json)
+          SITES_JSON=$(jq -c '.sites' config.json)
           echo "sites=${SITES_JSON}" >> $GITHUB_OUTPUT
 
   # JOB 2: Upload file, chạy song song cho mỗi site trong ma trận
