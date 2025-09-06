@@ -1,28 +1,18 @@
 {
-  "github": {
-    "owner": "ktbhub",
-    "image_repo": "ktb"
-  },
   "sites": [
     {
-      "prefix": "whatwillwear",
-      "slug": "whatwillwear",
-      "vps_host_secret": "WHATWILLWEAR_VPS_HOST",
-      "vps_user_secret": "WHATWILLWEAR_VPS_USERNAME",
-      "ssh_key_secret": "WHATWILLWEAR_SSH_PRIVATE_KEY",
-      "vps_port_secret": "WHATWILLWEAR_VPS_PORT",
-      "wp_path": "/home/whatwillwear.com/public_html",
-      "wp_author": "tran"
+      "slug": "ktbtee",
+      "prefix": "ktbtee",
+      "wp_path": "/home/ktbtee.com/public_html",
+      "wp_author": "admin",
+      "vps_secret_prefix": "KTBTEE"
     },
     {
-      "prefix": "ktbtee",
-      "slug": "ktbtee",
-      "vps_host_secret": "KTBTEE_VPS_HOST",
-      "vps_user_secret": "KTBTEE_VPS_USERNAME",
-      "ssh_key_secret": "KTBTEE_SSH_PRIVATE_KEY",
-      "vps_port_secret": "KTBTEE_VPS_PORT",
-      "wp_path": "/home/ktbtee.com/public_html",
-      "wp_author": "khuetran"
+      "slug": "whatwillwear",
+      "prefix": "whatwillwear",
+      "wp_path": "/home/whatwillwear.com/public_html",
+      "wp_author": "editor",
+      "vps_secret_prefix": "WHATWILLWEAR"
     }
   ]
 }
