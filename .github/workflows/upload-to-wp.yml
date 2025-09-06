@@ -5,12 +5,11 @@ on:
     types: [upload-zip]
   workflow_dispatch:
 
-# Cấp quyền ghi cho GITHUB_TOKEN để push file log về repo
 permissions:
   contents: write
 
 jobs:
-  # JOB 1: Đọc config và tạo ma trận động cho job sau
+  # JOB 1: Đọc config và tạo ma trận động (Không thay đổi)
   setup:
     runs-on: ubuntu-latest
     outputs:
@@ -25,16 +24,18 @@ jobs:
           SITES_JSON=$(jq -c '.sites' config.json)
           echo "sites=${SITES_JSON}" >> $GITHUB_OUTPUT
 
-  # JOB 2: Upload file, chạy song song cho mỗi site trong ma trận
+  # JOB 2: Upload file (Thêm 'outputs' để job report có thể đọc)
   upload:
-    needs: setup # Phải chạy sau khi job setup hoàn thành
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false # Nếu 1 site lỗi, các site khác vẫn tiếp tục
+      fail-fast: false
       matrix:
-        # Tạo ma trận từ output của job setup
         site: ${{ fromJson(needs.setup.outputs.sites_matrix) }}
-
+    # PHẦN MỚI: Khai báo các output của job này
+    outputs:
+      slug: ${{ steps.set_outputs.outputs.slug }}
+      uploaded_count: ${{ steps.set_outputs.outputs.uploaded_count }}
     steps:
       - name: Checkout ktbupload repo
         uses: actions/checkout@v4
@@ -75,13 +76,9 @@ jobs:
           VFLIPPA_VPS_USERNAME: ${{ secrets.VFLIPPA_VPS_USERNAME }}
           VFLIPPA_SSH_PRIVATE_KEY: ${{ secrets.VFLIPPA_SSH_PRIVATE_KEY }}
           VFLIPPA_VPS_PORT: ${{ secrets.VFLIPPA_VPS_PORT }}
-          
-          # LƯU Ý: Khi có site mới, bạn chỉ cần thêm secrets của nó vào đây và vào repo settings
-          
         run: node ktbupload/upload-script.js
       
       - name: Commit and push log file
-        # Chỉ chạy nếu có file được upload thành công
         if: success() && steps.upload_process.outputs.uploaded_count > 0
         run: |
           cd ktbupload
@@ -90,20 +87,57 @@ jobs:
           git add uploaded_files_${{ matrix.site.slug }}.log
           git commit -m "Update log for ${{ matrix.site.slug }}" || echo "No changes to commit"
           git push
+      
+      # STEP MỚI: Gán output của step vào output của job
+      - name: Set job outputs
+        id: set_outputs
+        run: |
+          echo "slug=${{ matrix.site.slug }}" >> $GITHUB_OUTPUT
+          echo "uploaded_count=${{ steps.upload_process.outputs.uploaded_count }}" >> $GITHUB_OUTPUT
 
-  # JOB 3: Gửi báo cáo tổng hợp sau khi tất cả các job upload hoàn tất
+  # JOB 3: Gửi báo cáo (Được cập nhật hoàn toàn)
   report:
     needs: upload
-    if: always() # Luôn chạy dù các job upload thành công hay thất bại
+    if: always() # Luôn chạy để báo cáo kể cả khi có lỗi
     runs-on: ubuntu-latest
     steps:
-      - name: Send Summary Report to Telegram
+      - name: Create Detailed Report Message
+        id: create_message
+        run: |
+          # Lấy kết quả từ tất cả các job 'upload' trong matrix
+          SITES_OUTPUTS='${{ toJSON(needs.upload) }}'
+          
+          MESSAGE="✅ *KTB Uploader - Báo cáo hoàn tất*\n\n"
+          TOTAL_FILES=0
+          FILES_UPLOADED_COUNT=0
+
+          # Dùng 'jq' để lọc và lặp qua các site có file được upload (> 0)
+          echo "$SITES_OUTPUTS" | jq -c '.[] | select(.outputs.uploaded_count > 0)' | while read -r site; do
+            SLUG=$(echo "$site" | jq -r '.outputs.slug')
+            COUNT=$(echo "$site" | jq -r '.outputs.uploaded_count')
+            MESSAGE+="- Đã upload *${COUNT}* file(s) lên trang *${SLUG}*\n"
+            TOTAL_FILES=$((TOTAL_FILES + COUNT))
+            FILES_UPLOADED_COUNT=$((FILES_UPLOADED_COUNT + 1))
+          done
+
+          # Tạo tin nhắn cuối cùng
+          if [ "$FILES_UPLOADED_COUNT" -gt 0 ]; then
+            if [ "$FILES_UPLOADED_COUNT" -gt 1 ]; then
+                MESSAGE+="\nTổng cộng: *${TOTAL_FILES}* file(s) đã được upload."
+            fi
+          else
+            MESSAGE+="Không có file mới nào được upload trong lần chạy này."
+          fi
+          
+          # Gán tin nhắn nhiều dòng vào output của step
+          echo "message<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$MESSAGE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Send Detailed Report to Telegram
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: |
-            ✅ KTB Uploader - Workflow Hoàn Tất!
-            
-            Trạng thái chung: ${{ needs.upload.result }}
-            Xem chi tiết tại: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          message: ${{ steps.create_message.outputs.message }}
+          format: markdown # Thêm định dạng để tin nhắn đẹp hơn
