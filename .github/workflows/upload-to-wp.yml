@@ -94,7 +94,7 @@ jobs:
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: "✅ KTBGit WWW Uploader - Done. Uploaded: ${{ steps.upload_process.outputs.uploaded_count }}"
+          message: "✅ KTBGit WWW Uploaded: ${{ steps.upload_process.outputs.uploaded_count }}"
             
       - name: Send Failure Message to Telegram
         if: failure()
