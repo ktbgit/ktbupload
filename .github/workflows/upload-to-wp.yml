@@ -84,6 +84,7 @@ jobs:
           cd ktbupload
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull
           git add uploaded_files_${{ matrix.site.slug }}.log
           git commit -m "Update log for ${{ matrix.site.slug }}" || echo "No changes to commit"
           git push
