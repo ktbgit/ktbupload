@@ -9,8 +9,33 @@ permissions:
   contents: write
 
 jobs:
-  upload:
+  # JOB 1: Đọc config và tạo ra ma trận cho job sau
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      # Output sẽ là một chuỗi JSON chứa danh sách các site
+      sites_matrix: ${{ steps.set_matrix.outputs.sites }}
+    steps:
+      - name: Checkout ktbupload repo
+        uses: actions/checkout@v4
+
+      - name: Read sites config and set matrix
+        id: set_matrix
+        run: |
+          # Dùng jq để đọc file json và chuyển thành chuỗi JSON trên 1 dòng
+          SITES_JSON=$(jq -c '.sites' ktbupload/config.json)
+          echo "sites=${SITES_JSON}" >> $GITHUB_OUTPUT
+
+  # JOB 2: Upload file, chạy song song cho mỗi site trong ma trận
+  upload:
+    needs: setup # Phải chạy sau khi job setup hoàn thành
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # Nếu 1 job con bị lỗi, các job khác vẫn tiếp tục chạy
+      matrix:
+        # Tạo ma trận từ output của job setup
+        site: ${{ fromJson(needs.setup.outputs.sites_matrix) }}
+
     steps:
       - name: Checkout ktbupload repo
         uses: actions/checkout@v4
@@ -20,86 +45,67 @@ jobs:
       - name: Checkout ktb-image repo
         uses: actions/checkout@v4
         with:
-          repository: ktbgit/ktb-image
+          repository: ktbhub/ktb-image
           path: ktb-image
-          token: ${{ secrets.KTBGIT_PAT }}
+          token: ${{ secrets.KTBHUB_PAT }}
 
-      - name: Set up SSH
+      - name: Set up SSH for Git Push
         uses: webfactory/ssh-agent@v0.5.3
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
           
-      - name: Upload files and run WP-CLI command
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          
+      - name: Upload and Process for ${{ matrix.site.slug }}
         id: upload_process
+        env:
+          # Truyền toàn bộ thông tin của site hiện tại vào script
+          SITE_CONFIG_JSON: ${{ toJSON(matrix.site) }}
+          
+          # Pass TẤT CẢ secrets vào môi trường.
+          # Script Node.js sẽ tự chọn đúng secret dựa vào vps_secret_prefix.
+          KTBTEE_VPS_HOST: ${{ secrets.KTBTEE_VPS_HOST }}
+          KTBTEE_VPS_USERNAME: ${{ secrets.KTBTEE_VPS_USERNAME }}
+          KTBTEE_SSH_PRIVATE_KEY: ${{ secrets.KTBTEE_SSH_PRIVATE_KEY }}
+          KTBTEE_VPS_PORT: ${{ secrets.KTBTEE_VPS_PORT }}
+          WHATWILLWEAR_VPS_HOST: ${{ secrets.WHATWILLWEAR_VPS_HOST }}
+          WHATWILLWEAR_VPS_USERNAME: ${{ secrets.WHATWILLWEAR_VPS_USERNAME }}
+          WHATWILLWEAR_SSH_PRIVATE_KEY: ${{ secrets.WHATWILLWEAR_SSH_PRIVATE_KEY }}
+          WHATWILLWEAR_VPS_PORT: ${{ secrets.WHATWILLWEAR_VPS_PORT }}
+          # Khi có site mới, bạn chỉ cần thêm secrets của nó vào đây và vào repo settings
+          
         run: |
-          # Define the unique temporary directory
-          UNIQUE_DIR="/tmp/$(date +%s%N)"
-          
-          # Kiểm tra và tạo file log nếu chưa tồn tại
-          touch ktbupload/uploaded_files.log
-          
-          cd ktb-image/generated-zips/
-          FILE_COUNT=$(ls -1 *.zip | wc -l)
-          echo "Processing $FILE_COUNT files..."
-          
-          UPLOAD_COUNT=0
-          
-          for file in *.zip; do
-            # Kiểm tra xem file đã được upload chưa
-            if grep -Fxq "$file" ../../ktbupload/uploaded_files.log; then
-              echo "Skipping $file, already uploaded."
-            else
-              echo "Uploading $file..."
-              
-              # TẠO THƯ MỤC TRÊN VPS TRƯỚC KHI UPLOAD
-              ssh -o StrictHostKeyChecking=no -p ${{ secrets.VPS_PORT }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "mkdir -p $UNIQUE_DIR"
-
-              # UPLOAD FILE ZIP VÀO THƯ MỤC ĐÃ TẠO
-              scp -o StrictHostKeyChecking=no -P ${{ secrets.VPS_PORT }} "$file" ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:$UNIQUE_DIR/
-              
-              ssh -o StrictHostKeyChecking=no -p ${{ secrets.VPS_PORT }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "
-                # Giải nén file zip
-                cd $UNIQUE_DIR
-                unzip -o "$file"
-                
-                # Import các file đã giải nén
-                cd /home/whatwillwear.com/public_html
-                wp media import $UNIQUE_DIR/*.webp --porcelain --user=tran
-                
-                # Dọn dẹp
-                rm -rf $UNIQUE_DIR
-              "
-              # Ghi tên file vào log nếu upload thành công
-              echo "$file" >> ../../ktbupload/uploaded_files.log
-              UPLOAD_COUNT=$((UPLOAD_COUNT+1))
-              echo "Finished importing $file."
-            fi
-          done
-          echo "Total files processed: $FILE_COUNT"
-          echo "uploaded_count=$UPLOAD_COUNT" >> $GITHUB_OUTPUT
+          # Chạy script xử lý, script này sẽ được điều chỉnh ở bước 3
+          node ./ktbupload/upload-script.js
       
+      # Các bước commit log và gửi Telegram có thể được điều chỉnh để chạy sau khi
+      # tất cả các job trong matrix hoàn thành, bằng cách tạo một job thứ 3.
+      # Tuy nhiên, để đơn giản, ta có thể commit log ngay tại đây.
       - name: Commit and push log file
-        if: success()
+        if: success() && steps.upload_process.outputs.uploaded_count > 0
         run: |
           cd ktbupload
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add uploaded_files.log
-          git commit -m "Update uploaded files log" || echo "No changes to commit"
+          git add uploaded_files_${{ matrix.site.slug }}.log
+          git commit -m "Update log for ${{ matrix.site.slug }}" || echo "No changes to commit"
           git push
 
-      - name: Send Success Message to Telegram
-        if: success()
+  # (Tùy chọn) JOB 3: Gửi báo cáo tổng hợp sau khi tất cả hoàn tất
+  report:
+    needs: upload
+    if: always() # Luôn chạy dù upload thành công hay thất bại
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Report to Telegram
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: "✅ KTBGit WWW Uploaded: ${{ steps.upload_process.outputs.uploaded_count }}"
-            
-      - name: Send Failure Message to Telegram
-        if: failure()
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: "❌ KTBGit WWW Uploader - Fail"
+          message: |
+            ✅ KTB Uploader - Hoàn tất!
+            Trạng thái job: ${{ needs.upload.result }}
+            Xem chi tiết tại: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
