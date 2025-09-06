@@ -96,23 +96,21 @@ jobs:
           echo "slug=${{ matrix.site.slug }}" >> $GITHUB_OUTPUT
           echo "uploaded_count=${{ steps.upload_process.outputs.uploaded_count }}" >> $GITHUB_OUTPUT
 
-  # JOB 3: Gửi báo cáo (Được cập nhật hoàn toàn)
+  # JOB 3: Gửi báo cáo (Đang bị lỗi so sánh)
   report:
     needs: upload
-    if: always() # Luôn chạy để báo cáo kể cả khi có lỗi
+    if: always() 
     runs-on: ubuntu-latest
     steps:
       - name: Create Detailed Report Message
         id: create_message
         run: |
-          # Lấy kết quả từ tất cả các job 'upload' trong matrix
           SITES_OUTPUTS='${{ toJSON(needs.upload) }}'
-          
           MESSAGE="✅ *KTB Uploader - Báo cáo hoàn tất*\n\n"
           TOTAL_FILES=0
           FILES_UPLOADED_COUNT=0
-
-          # Dùng 'jq' để lọc và lặp qua các site có file được upload (> 0)
+          
+          # Dòng này đang so sánh chuỗi với số -> Gây lỗi
           echo "$SITES_OUTPUTS" | jq -c '.[] | select(.outputs.uploaded_count > 0)' | while read -r site; do
             SLUG=$(echo "$site" | jq -r '.outputs.slug')
             COUNT=$(echo "$site" | jq -r '.outputs.uploaded_count')
