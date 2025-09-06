@@ -4,14 +4,14 @@
       "slug": "ktbtee",
       "prefix": "ktbtee",
       "wp_path": "/home/ktbtee.com/public_html",
-      "wp_author": "admin",
+      "wp_author": "khuetran",
       "vps_secret_prefix": "KTBTEE"
     },
     {
       "slug": "whatwillwear",
       "prefix": "whatwillwear",
       "wp_path": "/home/whatwillwear.com/public_html",
-      "wp_author": "editor",
+      "wp_author": "tran",
       "vps_secret_prefix": "WHATWILLWEAR"
     }
   ]
