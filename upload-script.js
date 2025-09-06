@@ -2,18 +2,25 @@ const fs = require("fs");
 const { execSync } = require("child_process");
 const path = require("path");
 
-// Lấy thông tin config của site hiện tại từ biến môi trường
+// --- Lấy thông tin cấu hình ---
+// Lấy thông tin của site hiện tại từ biến môi trường
 const site = JSON.parse(process.env.SITE_CONFIG_JSON);
+if (!site) {
+  console.error("Site configuration not found in environment variables.");
+  process.exit(1);
+}
+
 const zipFiles = fs.readdirSync("ktb-image/generated-zips").filter(file => file.endsWith(".zip"));
 let uploadedCount = 0;
 
-// Tạo file log nếu chưa tồn tại
+// --- Chuẩn bị file log ---
 const logFile = path.join("ktbupload", `uploaded_files_${site.slug}.log`);
 if (!fs.existsSync(logFile)) {
   fs.writeFileSync(logFile, "");
 }
 const logContent = fs.readFileSync(logFile, "utf8");
 
+// --- Xử lý từng file zip ---
 zipFiles.forEach(file => {
   // Chỉ xử lý các file zip có prefix khớp với site hiện tại
   if (!file.startsWith(site.prefix)) {
@@ -32,14 +39,19 @@ zipFiles.forEach(file => {
     const vpsHost = process.env[`${site.vps_secret_prefix}_VPS_HOST`];
     const vpsUser = process.env[`${site.vps_secret_prefix}_VPS_USERNAME`];
     const vpsPort = process.env[`${site.vps_secret_prefix}_VPS_PORT`];
+    const vpsSshKey = process.env[`${site.vps_secret_prefix}_SSH_PRIVATE_KEY`];
+
+    if (!vpsHost || !vpsUser || !vpsPort || !vpsSshKey) {
+        throw new Error(`Missing VPS secrets for prefix: ${site.vps_secret_prefix}`);
+    }
     
-    // Tạo file key tạm thời để kết nối SSH
+    // Tạo file key tạm thời và bảo mật để kết nối SSH
     const sshKeyPath = `/tmp/ssh_key_${site.slug}`;
-    fs.writeFileSync(sshKeyPath, process.env[`${site.vps_secret_prefix}_SSH_PRIVATE_KEY`], { mode: 0o600 });
+    fs.writeFileSync(sshKeyPath, vpsSshKey, { mode: 0o600 });
     
     const zipSourcePath = path.join("ktb-image/generated-zips", file);
     const remoteTempDir = `/tmp/upload_${Date.now()}`;
-    const remoteZipPath = `${remoteTempDir}/${file}`;
+    const remoteZipPath = `${remoteTempDir}/${path.basename(file)}`;
 
     // 1. Tạo thư mục trên server
     execSync(`ssh -o StrictHostKeyChecking=no -i ${sshKeyPath} -p ${vpsPort} ${vpsUser}@${vpsHost} "mkdir -p ${remoteTempDir}"`, { stdio: 'inherit' });
@@ -48,23 +60,19 @@ zipFiles.forEach(file => {
     execSync(`scp -o StrictHostKeyChecking=no -i ${sshKeyPath} -P ${vpsPort} ${zipSourcePath} ${vpsUser}@${vpsHost}:${remoteZipPath}`, { stdio: 'inherit' });
 
     // 3. Giải nén, import và dọn dẹp trên server
-    const remoteCommand = `
-      cd ${remoteTempDir} && unzip -o '${file}' &&
-      cd ${site.wp_path} &&
-      wp media import ${remoteTempDir}/*.webp --porcelain --user=${site.wp_author} &&
-      rm -rf ${remoteTempDir}
-    `;
+    const remoteCommand = `cd ${remoteTempDir} && unzip -o '${path.basename(file)}' && cd ${site.wp_path} && wp media import ${remoteTempDir}/*.webp --porcelain --user=${site.wp_author} && rm -rf ${remoteTempDir}`;
     execSync(`ssh -o StrictHostKeyChecking=no -i ${sshKeyPath} -p ${vpsPort} ${vpsUser}@${vpsHost} "${remoteCommand}"`, { stdio: 'inherit' });
 
     fs.appendFileSync(logFile, `${file}\n`);
     uploadedCount++;
-    console.log(`Finished importing ${file} to ${site.slug}.`);
+    console.log(`✅ Finished importing ${file} to ${site.slug}.`);
   } catch (error) {
-    console.error(`Failed to upload ${file} to ${site.slug}: ${error.message}`);
-    // Nếu muốn dừng lại khi có lỗi, hãy throw error
-    // throw error; 
+    console.error(`❌ Failed to upload ${file} to ${site.slug}: ${error.message}`);
+    process.exit(1); // Dừng lại nếu có lỗi
   }
 });
 
-// Set output cho step để biết có file nào được upload hay không
+// --- Xuất kết quả ---
+// Set output cho step để step sau có thể sử dụng nếu cần
+console.log(`Total files uploaded for ${site.slug}: ${uploadedCount}`);
 fs.appendFileSync(process.env.GITHUB_OUTPUT, `uploaded_count=${uploadedCount}\n`);
