@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  # JOB 1: Đọc config (Không đổi)
+  # JOB 1: Đọc config
   setup:
     runs-on: ubuntu-latest
     outputs:
@@ -23,7 +23,7 @@ jobs:
           SITES_JSON=$(jq -c '.sites' config.json)
           echo "sites=${SITES_JSON}" >> $GITHUB_OUTPUT
 
-  # JOB 2: Upload file (Đã sửa đổi)
+  # JOB 2: Upload file
   upload:
     needs: setup
     runs-on: ubuntu-latest
@@ -31,7 +31,6 @@ jobs:
       fail-fast: false
       matrix:
         site: ${{ fromJson(needs.setup.outputs.sites_matrix) }}
-    # BỎ HOÀN TOÀN KHỐI 'outputs'
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -71,25 +70,25 @@ jobs:
           git add uploaded_files_${{ matrix.site.slug }}.log
           git commit -m "Update log for ${{ matrix.site.slug }}" || echo "No changes to commit"
           git push
-      # STEP MỚI: Lưu file báo cáo để job sau có thể dùng
       - name: Archive report file
         if: success() && steps.upload_process.outputs.uploaded_count > 0
         uses: actions/upload-artifact@v4
         with:
-          name: reports
+          # SỬA LỖI: Tạo tên artifact duy nhất cho mỗi site
+          name: report-${{ matrix.site.slug }}
           path: ${{ matrix.site.slug }}_report.txt
 
-  # JOB 3: Gửi báo cáo (Đã viết lại hoàn toàn)
+  # JOB 3: Gửi báo cáo
   report:
     needs: upload
     if: always()
     runs-on: ubuntu-latest
     steps:
-      # STEP MỚI: Tải tất cả các file báo cáo đã được lưu
       - name: Download all report files
         uses: actions/download-artifact@v4
         with:
-          name: reports
+          # SỬA LỖI: Bỏ 'name', thay bằng 'pattern' để tải về tất cả artifact khớp mẫu
+          pattern: report-*
           path: all-reports
           if-no-files-found: warn
       - name: Create and Send Report
@@ -97,17 +96,15 @@ jobs:
           TELEGRAM_TO: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          # Kiểm tra xem có file báo cáo nào không
-          if [ -z "$(ls -A all-reports)" ]; then
+          if [ -z "$(ls -A all-reports 2>/dev/null)" ]; then
             MESSAGE="✅ *KTB Image Upload - Done*\n\nKhông có file mới nào được upload trong lần chạy này."
           else
-            # Ghép nội dung tất cả các file báo cáo lại
             MESSAGE="✅ *KTB Image Upload - Done*\n\n"
-            cat all-reports/*.txt >> temp_message.txt
-            MESSAGE+=$(cat temp_message.txt)
+            # SỬA LỖI: Dùng `find` để đọc tất cả file .txt trong các thư mục con
+            ALL_REPORTS=$(find all-reports -type f -name "*.txt" -exec cat {} \; | paste -sd '\n' -)
+            MESSAGE+="$ALL_REPORTS"
           fi
           
-          # Gửi tin nhắn bằng curl (đáng tin cậy hơn)
           curl -s -X POST https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage \
             -d chat_id=$TELEGRAM_TO \
             -d text="$MESSAGE" \
