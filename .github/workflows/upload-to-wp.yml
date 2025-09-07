@@ -15,13 +15,12 @@ jobs:
     outputs:
       sites_matrix: ${{ steps.set_matrix.outputs.sites }}
     steps:
-      - name: Checkout ktbupload repo
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Read sites config and set matrix
         id: set_matrix
         run: |
-          # Đọc file config từ thư mục gốc
           SITES_JSON=$(jq -c '.sites' config.json)
           echo "sites=${SITES_JSON}" >> $GITHUB_OUTPUT
 
@@ -34,18 +33,16 @@ jobs:
       matrix:
         site: ${{ fromJson(needs.setup.outputs.sites_matrix) }}
     outputs:
-      slug: ${{ steps.set_outputs.outputs.slug }}
-      uploaded_count: ${{ steps.set_outputs.outputs.uploaded_count }}
+      details: ${{ steps.set_outputs.outputs.details }}
     steps:
-      # SỬA LỖI: Bỏ `with: path: ktbupload` để checkout ra thư mục gốc cho nhất quán
-      - name: Checkout ktbupload repo
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Checkout ktb-image repo
         uses: actions/checkout@v4
         with:
           repository: ktbhub/ktb-image
-          path: ktb-image # Thư mục này vẫn giữ nguyên
+          path: ktb-image
           token: ${{ secrets.KTBHUB_PAT }}
           
       - name: Setup Node.js
@@ -69,13 +66,11 @@ jobs:
           VFLIPPA_VPS_USERNAME: ${{ secrets.VFLIPPA_VPS_USERNAME }}
           VFLIPPA_SSH_PRIVATE_KEY: ${{ secrets.VFLIPPA_SSH_PRIVATE_KEY }}
           VFLIPPA_VPS_PORT: ${{ secrets.VFLIPPA_VPS_PORT }}
-        # SỬA LỖI: Chạy script từ thư mục gốc
         run: node upload-script.js
       
       - name: Commit and push log file
         if: success() && steps.upload_process.outputs.uploaded_count > 0
         run: |
-          # SỬA LỖI: Bỏ `cd ktbupload` vì đã ở thư mục gốc
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git pull
@@ -83,13 +78,13 @@ jobs:
           git commit -m "Update log for ${{ matrix.site.slug }}" || echo "No changes to commit"
           git push
       
-      - name: Set job outputs
+      - name: Set job outputs as JSON
         id: set_outputs
         run: |
-          echo "slug=${{ matrix.site.slug }}" >> $GITHUB_OUTPUT
-          echo "uploaded_count=${{ steps.upload_process.outputs.uploaded_count }}" >> $GITHUB_OUTPUT
+          JSON_PAYLOAD=$(jq -n --arg slug "${{ matrix.site.slug }}" --arg count "${{ steps.upload_process.outputs.uploaded_count }}" '{slug: $slug, uploaded_count: $count}')
+          echo "details=${JSON_PAYLOAD}" >> $GITHUB_OUTPUT
 
-  # JOB 3: Gửi báo cáo (Đã sửa lỗi so sánh)
+  # JOB 3: Gửi báo cáo
   report:
     needs: upload
     if: always()
@@ -103,10 +98,10 @@ jobs:
           TOTAL_FILES=0
           FILES_UPLOADED_COUNT=0
 
-          # SỬA LỖI: Thêm `| tonumber` để chuyển chuỗi thành số
-          echo "$SITES_OUTPUTS" | jq -c '.[] | select((.outputs.uploaded_count | tonumber) > 0)' | while read -r site; do
-            SLUG=$(echo "$site" | jq -r '.outputs.slug')
-            COUNT=$(echo "$site" | jq -r '.outputs.uploaded_count')
+          # Dùng fromjson để đọc chuỗi JSON từ output của job upload
+          echo "$SITES_OUTPUTS" | jq -c '.[] | .outputs.details | fromjson | select((.uploaded_count | tonumber) > 0)' | while read -r site; do
+            SLUG=$(echo "$site" | jq -r '.slug')
+            COUNT=$(echo "$site" | jq -r '.uploaded_count')
             MESSAGE+="- Đã upload *${COUNT}* file(s) lên trang *${SLUG}*\n"
             TOTAL_FILES=$((TOTAL_FILES + COUNT))
             FILES_UPLOADED_COUNT=$((FILES_UPLOADED_COUNT + 1))
