@@ -14,7 +14,7 @@ const zipFiles = fs.readdirSync("ktb-image/generated-zips").filter(file => file.
 let uploadedCount = 0;
 
 // --- Chuẩn bị file log ---
-const logFile = path.join("ktbupload", `uploaded_files_${site.slug}.log`);
+const logFile = `uploaded_files_${site.slug}.log`; // <-- Sửa lại dòng này
 if (!fs.existsSync(logFile)) {
   fs.writeFileSync(logFile, "");
 }
