@@ -63,8 +63,9 @@ zipFiles.forEach(file => {
 console.log(`Total files uploaded for ${site.slug}: ${uploadedCount}`);
 fs.appendFileSync(process.env.GITHUB_OUTPUT, `uploaded_count=${uploadedCount}\n`);
 
-// TẠO FILE BÁO CÁO MỚI
+// TẠO FILE BÁO CÁO MỚI (Code mới, đơn giản hơn)
 if (uploadedFiles.length > 0) {
-  const reportMessage = `*Trang: ${site.slug}*\n` + uploadedFiles.map(f => `- \`${f}\``).join('\n');
+  // Chỉ ghi ra danh sách file, mỗi file một dòng
+  const reportMessage = uploadedFiles.map(f => `- \`${f}\``).join('\n');
   fs.writeFileSync(`${site.slug}_report.txt`, reportMessage);
 }
