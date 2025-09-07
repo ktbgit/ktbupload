@@ -1,4 +1,4 @@
-name: Upload to WordPress
+name: KTB Image Upload
 
 on:
   repository_dispatch:
@@ -106,7 +106,7 @@ jobs:
         id: create_message
         run: |
           SITES_OUTPUTS='${{ toJSON(needs.upload) }}'
-          MESSAGE="✅ *KTB Uploader - Báo cáo hoàn tất*\n\n"
+          MESSAGE="✅ *KTB Image Upload - Done*\n\n"
           TOTAL_FILES=0
           FILES_UPLOADED_COUNT=0
           
