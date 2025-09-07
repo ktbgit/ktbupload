@@ -78,7 +78,7 @@ jobs:
           name: report-${{ matrix.site.slug }}
           path: ${{ matrix.site.slug }}_report.txt
 
-# JOB 3: Gửi báo cáo (Phiên bản cuối cùng)
+# JOB 3: Gửi báo cáo (Đã sửa lỗi định dạng \n)
   report:
     needs: upload
     if: always()
@@ -98,19 +98,21 @@ jobs:
         run: |
           MESSAGE_HEADER="✅ *KTB Image Upload - Done*"
           
-          # Kiểm tra xem có file báo cáo nào được tải về không
           if [ -z "$(ls -A all-reports 2>/dev/null)" ]; then
             MESSAGE_BODY="Không có file mới nào được upload trong lần chạy này."
           else
-            # Ghép nội dung của tất cả các file .txt lại, mỗi file cách nhau một dòng
+            # Ghép nội dung của tất cả các file .txt lại
             MESSAGE_BODY=$(find all-reports -type f -name "*.txt" -print0 | xargs -0 cat | paste -sd '\n' -)
           fi
 
-          # Dùng jq để tạo JSON payload, đảm bảo ký tự xuống dòng được giữ nguyên
-          JSON_PAYLOAD=$(jq -n --arg text "$MESSAGE_HEADER\n\n$MESSAGE_BODY" \
+          # SỬA LỖI: Dùng `printf` để tạo tin nhắn với ký tự xuống dòng thật sự
+          FULL_MESSAGE=$(printf "%s\n\n%s" "$MESSAGE_HEADER" "$MESSAGE_BODY")
+
+          # Dùng jq để tạo JSON payload an toàn
+          JSON_PAYLOAD=$(jq -n --arg text "$FULL_MESSAGE" \
             '{chat_id: env.TELEGRAM_TO, text: $text, parse_mode: "Markdown"}')
 
-          # Gửi tin nhắn bằng curl với payload là JSON
+          # Gửi tin nhắn bằng curl
           curl -s -X POST -H 'Content-Type: application/json' \
             "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
             -d "$JSON_PAYLOAD"
