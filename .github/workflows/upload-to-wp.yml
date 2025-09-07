@@ -82,7 +82,9 @@ jobs:
         id: set_outputs
         run: |
           JSON_PAYLOAD=$(jq -n --arg slug "${{ matrix.site.slug }}" --arg count "${{ steps.upload_process.outputs.uploaded_count }}" '{slug: $slug, uploaded_count: $count}')
-          echo "details=${JSON_PAYLOAD}" >> $GITHUB_OUTPUT
+          echo "details<<EOF" >> $GITHUB_OUTPUT
+          echo "$JSON_PAYLOAD" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
   # JOB 3: Gửi báo cáo
   report:
