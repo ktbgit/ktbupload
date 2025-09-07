@@ -91,6 +91,7 @@ jobs:
         with:
           name: reports
           path: all-reports
+          if-no-files-found: warn
       - name: Create and Send Report
         env:
           TELEGRAM_TO: ${{ secrets.TELEGRAM_CHAT_ID }}
