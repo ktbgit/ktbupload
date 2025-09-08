@@ -60,6 +60,10 @@ jobs:
           VFLIPPA_VPS_USERNAME: ${{ secrets.VFLIPPA_VPS_USERNAME }}
           VFLIPPA_SSH_PRIVATE_KEY: ${{ secrets.VFLIPPA_SSH_PRIVATE_KEY }}
           VFLIPPA_VPS_PORT: ${{ secrets.VFLIPPA_VPS_PORT }}
+          PRINTIMENT_VPS_HOST: ${{ secrets.PRINTIMENT_VPS_HOST }}
+          PRINTIMENT_VPS_USERNAME: ${{ secrets.PRINTIMENT_VPS_USERNAME }}
+          PRINTIMENT_SSH_PRIVATE_KEY: ${{ secrets.PRINTIMENT_SSH_PRIVATE_KEY }}
+          PRINTIMENT_VPS_PORT: ${{ secrets.PRINTIMENT_VPS_PORT }}
         run: node upload-script.js
       - name: Commit and push log file
         if: success() && steps.upload_process.outputs.uploaded_count > 0
