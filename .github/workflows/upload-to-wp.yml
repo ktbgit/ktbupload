@@ -64,6 +64,10 @@ jobs:
           PRINTIMENT_VPS_USERNAME: ${{ secrets.PRINTIMENT_VPS_USERNAME }}
           PRINTIMENT_SSH_PRIVATE_KEY: ${{ secrets.PRINTIMENT_SSH_PRIVATE_KEY }}
           PRINTIMENT_VPS_PORT: ${{ secrets.PRINTIMENT_VPS_PORT }}
+          ALBUMCOVERPRINT_VPS_HOST: ${{ secrets.ALBUMCOVERPRINT_VPS_HOST }}
+          ALBUMCOVERPRINT_VPS_USERNAME: ${{ secrets.ALBUMCOVERPRINT_VPS_USERNAME }}
+          ALBUMCOVERPRINT_SSH_PRIVATE_KEY: ${{ secrets.ALBUMCOVERPRINT_SSH_PRIVATE_KEY }}
+          ALBUMCOVERPRINT_VPS_PORT: ${{ secrets.ALBUMCOVERPRINT_VPS_PORT }}
         run: node upload-script.js
       - name: Commit and push log file
         if: success() && steps.upload_process.outputs.uploaded_count > 0
