@@ -27,6 +27,13 @@
       "wp_path": "/home/printiment.com/public_html",
       "wp_author": "khuetran",
       "vps_secret_prefix": "PRINTIMENT"
+    },
+    {
+      "slug": "albumcoverprint",
+      "prefix": "albumcoverprint",
+      "wp_path": "/home/albumcoverprint.com/public_html",
+      "wp_author": "tran",
+      "vps_secret_prefix": "ALBUMCOVERPRINT"
     }
   ]
 }
