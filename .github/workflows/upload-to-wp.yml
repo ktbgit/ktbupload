@@ -104,7 +104,7 @@ jobs:
           # --- 1. Tạo file upload.log trực tiếp bằng 'echo -e' ---
           TIMESTAMP=$(TZ='Asia/Ho_Chi_Minh' date +"%Y-%m-%d %H:%M:%S %z")
           # Sử dụng 'echo -e' để ghi đè header vào file log, \n sẽ được hiểu là xuống dòng
-          echo -e "--- Summary of Last Upload ---\nGenerated at: $TIMESTAMP\n" > upload.log
+          echo -e "--- Summary of Last Upload ---\nTimestamp: $TIMESTAMP\n" > upload.log
 
           # Tìm các file báo cáo tạm thời
           AGGREGATED_REPORT_FILES=$(find all-reports -type f -name "*.txt" 2>/dev/null)
