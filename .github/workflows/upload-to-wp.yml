@@ -78,7 +78,7 @@ jobs:
           name: report-${{ matrix.site.slug }}
           path: ${{ matrix.site.slug }}_report.txt
 
-# JOB 3: Tạo log, Commit log và Gửi báo cáo (Đã sửa lỗi định dạng)
+# JOB 3: Tạo log, Commit log và Gửi báo cáo (Đã sửa lỗi định dạng và lỗi printf)
   report:
     needs: upload
     if: always()
@@ -103,20 +103,22 @@ jobs:
         run: |
           # --- 1. Tổng hợp kết quả từ các file report ---
           UPLOADED_FILES_LIST=""
-          # SỬA LỖI 1: Dùng vòng lặp 'for' để đảm bảo mỗi file được nối với nhau bằng một ký tự xuống dòng
+          # SỬA LỖI DÍNH CHỮ: Dùng vòng lặp 'for' để đảm bảo mỗi file được nối với nhau bằng ký tự xuống dòng
           if [ -d "all-reports" ] && [ -n "$(ls -A all-reports/*.txt 2>/dev/null)" ]; then
             temp_list=""
             for report_file in all-reports/*.txt; do
               # Nối nội dung của file, sau đó chủ động thêm một ký tự xuống dòng
               temp_list+="$(cat "$report_file")$'\n'"
             done
-            # Xóa ký tự xuống dòng cuối cùng bị thừa để danh sách được sạch sẽ
-            UPLOADED_FILES_LIST=$(printf "%.*s" "$(( ${#temp_list} - 1 ))" "$temp_list")
+            # Chỉ thực hiện cắt chuỗi khi temp_list không rỗng để tránh lỗi printf
+            if [ -n "$temp_list" ]; then
+              UPLOADED_FILES_LIST=$(printf "%.*s" "$(( ${#temp_list} - 1 ))" "$temp_list")
+            fi
           fi
 
           # --- 2. Tạo nội dung cho file log ---
           TIMESTAMP=$(TZ='Asia/Ho_Chi_Minh' date +"%Y-%m-%d %H:%M:%S %z")
-          # SỬA LỖI 2: Dùng `printf` để tạo biến LOG_HEADER với ký tự xuống dòng thật sự
+          # SỬA LỖI HIỂN THỊ "\n": Dùng `printf` để tạo biến LOG_HEADER với ký tự xuống dòng thật sự
           LOG_HEADER=$(printf "--- Summary of Last Upload ---\nGenerated at: %s" "$TIMESTAMP")
 
           if [ -z "$UPLOADED_FILES_LIST" ]; then
@@ -128,7 +130,6 @@ jobs:
           NEW_LOG_BLOCK_FOR_FILE=$(printf "%s\n\n%s\n" "$LOG_HEADER" "$LOG_BODY_FOR_FILE")
 
           # --- 3. Cập nhật và quản lý file upload.log (giữ 10 lần gần nhất) ---
-          # (Phần này không thay đổi)
           echo -e "$NEW_LOG_BLOCK_FOR_FILE" > temp_log.log
           if [ -f upload.log ]; then
             cat upload.log >> temp_log.log
@@ -142,7 +143,6 @@ jobs:
           fi
 
           # --- 4. Commit file upload.log mới vào repo ---
-          # (Phần này không thay đổi)
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add upload.log
@@ -155,7 +155,6 @@ jobs:
           fi
 
           # --- 5. Chuẩn bị và gửi tin nhắn Telegram ---
-          # (Logic này giờ sẽ hoạt động đúng vì các biến đầu vào đã được sửa lỗi)
           if [ -z "$UPLOADED_FILES_LIST" ]; then
             FINAL_STATUS="Upload thất bại"
             MESSAGE_BODY=""
