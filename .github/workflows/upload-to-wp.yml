@@ -70,15 +70,6 @@ jobs:
           ALBUMCOVERPRINT_SSH_PRIVATE_KEY: ${{ secrets.ALBUMCOVERPRINT_SSH_PRIVATE_KEY }}
           ALBUMCOVERPRINT_VPS_PORT: ${{ secrets.ALBUMCOVERPRINT_VPS_PORT }}
         run: node upload-script.js
-      - name: Commit and push log file
-        if: success() && steps.upload_process.outputs.uploaded_count > 0
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add uploaded_files_${{ matrix.site.slug }}.log
-          git commit -m "Update log for ${{ matrix.site.slug }}" || echo "No changes to commit"
-          git pull --rebase
-          git push
       - name: Archive report file
         if: success() && steps.upload_process.outputs.uploaded_count > 0
         uses: actions/upload-artifact@v4
@@ -87,35 +78,104 @@ jobs:
           name: report-${{ matrix.site.slug }}
           path: ${{ matrix.site.slug }}_report.txt
 
-# JOB 3: Gửi báo cáo (Đã sửa lỗi định dạng \n)
+# JOB 3: Tạo log, Commit log và Gửi báo cáo
   report:
     needs: upload
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repo # Cần checkout để commit file log
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }} # Dùng token mặc định của action
+
       - name: Download all report files
         uses: actions/download-artifact@v4
         with:
           pattern: report-*
           path: all-reports
           if-no-files-found: warn
-          
-      - name: Create and Send Report
+
+      - name: Generate Log, Manage History, and Send Report
         env:
           TELEGRAM_TO: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          MESSAGE_HEADER="✅ *KTB Image Upload - Done*"
-          
-          if [ -z "$(ls -A all-reports 2>/dev/null)" ]; then
-            MESSAGE_BODY="Không có file mới nào được upload trong lần chạy này."
-          else
-            # Ghép nội dung của tất cả các file .txt lại
-            MESSAGE_BODY=$(find all-reports -type f -name "*.txt" -print0 | xargs -0 cat | paste -sd '\n' -)
+          # --- 1. Tổng hợp kết quả từ các file report ---
+          # Ghép nội dung của tất cả các file .txt lại thành danh sách file thuần túy
+          UPLOADED_FILES_LIST=""
+          if [ -d "all-reports" ] && [ -n "$(ls -A all-reports)" ]; then
+            UPLOADED_FILES_LIST=$(find all-reports -type f -name "*.txt" -print0 | xargs -0 cat)
           fi
 
-          # SỬA LỖI: Dùng `printf` để tạo tin nhắn với ký tự xuống dòng thật sự
-          FULL_MESSAGE=$(printf "%s\n\n%s" "$MESSAGE_HEADER" "$MESSAGE_BODY")
+          # --- 2. Tạo nội dung cho lần chạy này ---
+          TIMESTAMP=$(TZ='Asia/Ho_Chi_Minh' date +"%Y-%m-%d %H:%M:%S %z")
+          LOG_HEADER="--- Summary of Last Upload ---\nGenerated at: $TIMESTAMP"
+
+          if [ -z "$UPLOADED_FILES_LIST" ]; then
+            LOG_BODY="Upload thất bại."
+          else
+            LOG_BODY="$UPLOADED_FILES_LIST"
+          fi
+
+          # Combine lại thành một khối log hoàn chỉnh cho lần chạy này
+          NEW_LOG_BLOCK=$(printf "%s\n\n%s\n" "$LOG_HEADER" "$LOG_BODY")
+
+          # --- 3. Cập nhật và quản lý file upload.log (giữ 10 lần gần nhất) ---
+          # Tạo file log tạm thời với nội dung mới ở trên cùng
+          echo -e "$NEW_LOG_BLOCK" > temp_log.log
+
+          # Nối nội dung log cũ (nếu có) vào file tạm
+          if [ -f upload.log ]; then
+            cat upload.log >> temp_log.log
+          fi
+
+          # Đếm số lần log (dựa vào số dòng chứa "---")
+          LOG_COUNT=$(grep -c "^--- Summary" temp_log.log)
+
+          # Nếu nhiều hơn 10, tìm dòng bắt đầu của lần log thứ 11 và cắt bỏ phần thừa
+          if [ "$LOG_COUNT" -gt 10 ]; then
+            # Lấy số dòng của dòng chứa "---" thứ 11
+            TRIM_LINE=$(grep -n "^--- Summary" temp_log.log | sed -n '11p' | cut -d: -f1)
+            # Giữ lại tất cả các dòng phía trên nó
+            head -n $((TRIM_LINE - 1)) temp_log.log > upload.log
+          else
+            # Nếu ít hơn hoặc bằng 10, giữ lại toàn bộ
+            mv temp_log.log upload.log
+          fi
+
+          # --- 4. Commit file upload.log mới vào repo ---
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add upload.log
+          # Commit chỉ khi có thay đổi
+          if ! git diff --staged --quiet; then
+            git commit -m "Update upload.log"
+            git pull --rebase
+            git push
+          else
+            echo "No changes to upload.log to commit."
+          fi
+
+          # --- 5. Chuẩn bị và gửi tin nhắn Telegram ---
+          MESSAGE_HEADER="✅ *KTB Image Upload - Done*"
+
+          # Tạo định dạng markdown cho danh sách file của lần upload *hiện tại*
+          if [ -z "$UPLOADED_FILES_LIST" ]; then
+            CURRENT_RUN_SUMMARY="Không có file mới nào được upload trong lần chạy này."
+          else
+            # Chuyển đổi danh sách file thành dạng markdown `- file.zip`
+            CURRENT_RUN_SUMMARY=$(echo "$UPLOADED_FILES_LIST" | awk '{print "- `" $0 "`"}')
+          fi
+
+          # Đọc toàn bộ nội dung file log (đã được cắt tỉa) để gửi đi
+          FULL_LOG_CONTENT=$(cat upload.log)
+
+          # Kết hợp tất cả lại thành một tin nhắn hoàn chỉnh
+          FULL_MESSAGE=$(printf "%s\n\n*Files in this run:*\n%s\n\n---\n\n*Upload History (Last 10):*\n\`\`\`\n%s\`\`\`" \
+            "$MESSAGE_HEADER" \
+            "$CURRENT_RUN_SUMMARY" \
+            "$FULL_LOG_CONTENT")
 
           # Dùng jq để tạo JSON payload an toàn
           JSON_PAYLOAD=$(jq -n --arg text "$FULL_MESSAGE" \
