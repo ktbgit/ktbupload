@@ -78,16 +78,16 @@ jobs:
           name: report-${{ matrix.site.slug }}
           path: ${{ matrix.site.slug }}_report.txt
 
-# JOB 3: Tạo log, Commit log và Gửi báo cáo
+# JOB 3: Tạo log, Commit log và Gửi báo cáo (Phiên bản cuối)
   report:
     needs: upload
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo # Cần checkout để commit file log
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }} # Dùng token mặc định của action
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download all report files
         uses: actions/download-artifact@v4
@@ -102,53 +102,45 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           # --- 1. Tổng hợp kết quả từ các file report ---
-          # Ghép nội dung của tất cả các file .txt lại thành danh sách file thuần túy
           UPLOADED_FILES_LIST=""
           if [ -d "all-reports" ] && [ -n "$(ls -A all-reports)" ]; then
-            UPLOADED_FILES_LIST=$(find all-reports -type f -name "*.txt" -print0 | xargs -0 cat)
+            UPLOADED_FILES_LIST=$(find all-reports -type f -name "*.txt" -exec cat {} +)
           fi
 
-          # --- 2. Tạo nội dung cho lần chạy này ---
+          # --- 2. Tạo nội dung cho file log ---
           TIMESTAMP=$(TZ='Asia/Ho_Chi_Minh' date +"%Y-%m-%d %H:%M:%S %z")
           LOG_HEADER="--- Summary of Last Upload ---\nGenerated at: $TIMESTAMP"
 
           if [ -z "$UPLOADED_FILES_LIST" ]; then
-            LOG_BODY="Upload thất bại."
+            # Nội dung chi tiết cho file log trong trường hợp thất bại
+            LOG_BODY_FOR_FILE="Upload thất bại."
           else
-            LOG_BODY="$UPLOADED_FILES_LIST"
+            # Nội dung chi tiết cho file log trong trường hợp thành công
+            LOG_BODY_FOR_FILE="$UPLOADED_FILES_LIST"
           fi
-
-          # Combine lại thành một khối log hoàn chỉnh cho lần chạy này
-          NEW_LOG_BLOCK=$(printf "%s\n\n%s\n" "$LOG_HEADER" "$LOG_BODY")
+          
+          # Combine lại thành một khối log hoàn chỉnh để lưu vào file
+          NEW_LOG_BLOCK_FOR_FILE=$(printf "%s\n\n%s\n" "$LOG_HEADER" "$LOG_BODY_FOR_FILE")
 
           # --- 3. Cập nhật và quản lý file upload.log (giữ 10 lần gần nhất) ---
-          # Tạo file log tạm thời với nội dung mới ở trên cùng
-          echo -e "$NEW_LOG_BLOCK" > temp_log.log
-
-          # Nối nội dung log cũ (nếu có) vào file tạm
+          # (Phần này không thay đổi)
+          echo -e "$NEW_LOG_BLOCK_FOR_FILE" > temp_log.log
           if [ -f upload.log ]; then
             cat upload.log >> temp_log.log
           fi
-
-          # Đếm số lần log (dựa vào số dòng chứa "---")
           LOG_COUNT=$(grep -c "^--- Summary" temp_log.log)
-
-          # Nếu nhiều hơn 10, tìm dòng bắt đầu của lần log thứ 11 và cắt bỏ phần thừa
           if [ "$LOG_COUNT" -gt 10 ]; then
-            # Lấy số dòng của dòng chứa "---" thứ 11
             TRIM_LINE=$(grep -n "^--- Summary" temp_log.log | sed -n '11p' | cut -d: -f1)
-            # Giữ lại tất cả các dòng phía trên nó
             head -n $((TRIM_LINE - 1)) temp_log.log > upload.log
           else
-            # Nếu ít hơn hoặc bằng 10, giữ lại toàn bộ
             mv temp_log.log upload.log
           fi
 
           # --- 4. Commit file upload.log mới vào repo ---
+          # (Phần này không thay đổi)
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add upload.log
-          # Commit chỉ khi có thay đổi
           if ! git diff --staged --quiet; then
             git commit -m "Update upload.log"
             git pull --rebase
@@ -157,29 +149,31 @@ jobs:
             echo "No changes to upload.log to commit."
           fi
 
-          # --- 5. Chuẩn bị và gửi tin nhắn Telegram ---
-          MESSAGE_HEADER="✅ *KTB Image Upload - Done*"
-
-          # Tạo định dạng markdown cho danh sách file của lần upload *hiện tại*
+          # --- 5. Chuẩn bị và gửi tin nhắn Telegram THEO YÊU CẦU MỚI ---
           if [ -z "$UPLOADED_FILES_LIST" ]; then
-            CURRENT_RUN_SUMMARY="Không có file mới nào được upload trong lần chạy này."
+            FINAL_STATUS="Upload thất bại."
+            # Nếu thất bại, phần thân tin nhắn sẽ trống
+            MESSAGE_BODY=""
           else
-            # Chuyển đổi danh sách file thành dạng markdown `- file.zip`
-            CURRENT_RUN_SUMMARY=$(echo "$UPLOADED_FILES_LIST" | awk '{print "- `" $0 "`"}')
+            FINAL_STATUS="Upload thành công."
+            # Nếu thành công, phần thân tin nhắn là danh sách file
+            MESSAGE_BODY="$UPLOADED_FILES_LIST"
           fi
 
-          # Đọc toàn bộ nội dung file log (đã được cắt tỉa) để gửi đi
-          FULL_LOG_CONTENT=$(cat upload.log)
+          # Tạo nội dung tin nhắn cốt lõi (header + body)
+          # Dùng if để xử lý trường hợp body trống, tránh tạo ra các dòng trắng thừa
+          if [ -z "$MESSAGE_BODY" ]; then
+            MESSAGE_CORE=$(printf "%s" "$LOG_HEADER")
+          else
+            MESSAGE_CORE=$(printf "%s\n\n%s" "$LOG_HEADER" "$MESSAGE_BODY")
+          fi
+          
+          # Nối dòng trạng thái cuối cùng vào tin nhắn
+          FULL_MESSAGE=$(printf "%s\n\n%s" "$MESSAGE_CORE" "$FINAL_STATUS")
 
-          # Kết hợp tất cả lại thành một tin nhắn hoàn chỉnh
-          FULL_MESSAGE=$(printf "%s\n\n*Files in this run:*\n%s\n\n---\n\n*Upload History (Last 10):*\n\`\`\`\n%s\`\`\`" \
-            "$MESSAGE_HEADER" \
-            "$CURRENT_RUN_SUMMARY" \
-            "$FULL_LOG_CONTENT")
-
-          # Dùng jq để tạo JSON payload an toàn
+          # Gửi tin nhắn dạng text thường (đã xóa parse_mode)
           JSON_PAYLOAD=$(jq -n --arg text "$FULL_MESSAGE" \
-            '{chat_id: env.TELEGRAM_TO, text: $text, parse_mode: "Markdown"}')
+            '{chat_id: env.TELEGRAM_TO, text: $text}')
 
           # Gửi tin nhắn bằng curl
           curl -s -X POST -H 'Content-Type: application/json' \
