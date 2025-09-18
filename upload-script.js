@@ -45,7 +45,31 @@ zipFiles.forEach(file => {
     const remoteZipPath = `${remoteTempDir}/${path.basename(file)}`;
     execSync(`ssh -o StrictHostKeyChecking=no -i ${sshKeyPath} -p ${vpsPort} ${vpsUser}@${vpsHost} "mkdir -p ${remoteTempDir}"`, { stdio: 'inherit' });
     execSync(`scp -o StrictHostKeyChecking=no -i ${sshKeyPath} -P ${vpsPort} ${zipSourcePath} ${vpsUser}@${vpsHost}:${remoteZipPath}`, { stdio: 'inherit' });
-    const remoteCommand = `cd ${remoteTempDir} && unzip -o '${path.basename(file)}' && cd ${site.wp_path} && wp media import ${remoteTempDir}/*.{webp,jpg} --porcelain --user=${site.wp_author} && rm -rf ${remoteTempDir}`;
+    // --- PHIÊN BẢN HOÀN CHỈNH CUỐI CÙNG ---
+    const remoteCommand = `
+      # Bật tính năng bỏ qua các pattern không tìm thấy file
+      shopt -s nullglob
+      set -e
+      
+      echo "--- Changing to temp directory: ${remoteTempDir}"
+      cd ${remoteTempDir}
+
+      echo "--- Creating subdirectory for images..."
+      mkdir extracted_images
+
+      echo "--- Unzipping file into subdirectory..."
+      unzip -o '${path.basename(file)}' -d extracted_images
+
+      echo "--- Changing to WordPress directory..."
+      cd ${site.wp_path}
+
+      echo "--- Starting WP Media Import for .webp and .jpg files..."
+      # Bây giờ, nếu không có file .webp, nó sẽ được bỏ qua một cách nhẹ nhàng
+      wp media import ${remoteTempDir}/extracted_images/*.{webp,jpg} --porcelain --user=${site.wp_author}
+      
+      echo "--- Cleaning up temp directory..."
+      rm -rf ${remoteTempDir}
+    `;
     execSync(`ssh -o StrictHostKeyChecking=no -i ${sshKeyPath} -p ${vpsPort} ${vpsUser}@${vpsHost} "${remoteCommand}"`, { stdio: 'inherit' });
 
     // --- Logic ghi nhận thành công ---
