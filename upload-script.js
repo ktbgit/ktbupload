@@ -45,7 +45,7 @@ zipFiles.forEach(file => {
     const remoteZipPath = `${remoteTempDir}/${path.basename(file)}`;
     execSync(`ssh -o StrictHostKeyChecking=no -i ${sshKeyPath} -p ${vpsPort} ${vpsUser}@${vpsHost} "mkdir -p ${remoteTempDir}"`, { stdio: 'inherit' });
     execSync(`scp -o StrictHostKeyChecking=no -i ${sshKeyPath} -P ${vpsPort} ${zipSourcePath} ${vpsUser}@${vpsHost}:${remoteZipPath}`, { stdio: 'inherit' });
-    const remoteCommand = `cd ${remoteTempDir} && unzip -o '${path.basename(file)}' && cd ${site.wp_path} && wp media import ${remoteTempDir}/*.webp --porcelain --user=${site.wp_author} && rm -rf ${remoteTempDir}`;
+    const remoteCommand = `cd ${remoteTempDir} && unzip -o '${path.basename(file)}' && cd ${site.wp_path} && wp media import ${remoteTempDir}/*.{webp,jpg} --porcelain --user=${site.wp_author} && rm -rf ${remoteTempDir}`;
     execSync(`ssh -o StrictHostKeyChecking=no -i ${sshKeyPath} -p ${vpsPort} ${vpsUser}@${vpsHost} "${remoteCommand}"`, { stdio: 'inherit' });
 
     // --- Logic ghi nhận thành công ---
